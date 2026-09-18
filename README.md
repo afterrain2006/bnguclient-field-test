@@ -8,6 +8,7 @@
 
 ## 队友先看这里
 
+- [下载桌面测试包](https://github.com/afterrain2006/bnguclient-field-test/releases/tag/v1.0.0-field-test.1)：Windows ZIP 和 Linux x86_64 tar.gz；私有仓库需先取得访问权限。
 - [使用方法](docs/USAGE.md)：启动、Esc 菜单、连接、图传和控制操作。
 - [Linux 安装与验证](docs/LINUX.md)：Ubuntu 依赖、源码运行、打包和目标机检查。
 - [裁判系统与超电测试指南](docs/FIELD_TEST.md)：接线前检查、只读测试顺序、记录哪些数据、怎样判定问题所在。
@@ -46,6 +47,34 @@ powershell -ExecutionPolicy Bypass -File scripts/package-field-test.ps1
 ```
 
 ZIP 解压后运行 `run.bat`；它把工作目录切到解压位置，再启动程序。包内含 `bnguclient.exe`、`resources` 和这份测试指南，不需要 Node 或源码。目标机器仍需 WebView2 等 Windows 运行依赖。本机已从独立打包目录验证 Mock MQTT、UDP H.265 和 Esc 菜单；队友机器需再做一次现场检查。
+
+## 从源码启动 Linux 桌面版
+
+以下命令适用于 Ubuntu 22.04 / 24.04 x86_64 的图形桌面。先安装 Tauri 2 构建依赖；另需安装 Rust 稳定工具链与 Node.js 22（见[完整 Linux 指南](docs/LINUX.md)）：
+
+```bash
+sudo apt update
+sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+  pkg-config git ffmpeg
+```
+
+在终端从源码启动：
+
+```bash
+git clone https://github.com/afterrain2006/bnguclient-field-test.git
+cd bnguclient-field-test
+npm ci
+npm run tauri dev
+```
+
+构建可分发的 Linux 压缩包：
+
+```bash
+npm run build:linux
+```
+
+产物位于 `build-linux/bnguclient-field-test-linux-x86_64.tar.gz`。也可从上方 Release 直接下载 Linux 包，按[完整 Linux 指南](docs/LINUX.md)安装目标机运行库、解压并执行 `./run.sh`。Ubuntu 22.04 CI 已通过 Linux 编译与打包；图形窗口和实机 MQTT/UDP 仍需在目标机器现场验证。
 
 ## 软件自测
 
