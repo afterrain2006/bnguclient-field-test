@@ -9,6 +9,7 @@
 ## 队友先看这里
 
 - [使用方法](docs/USAGE.md)：启动、Esc 菜单、连接、图传和控制操作。
+- [Linux 安装与验证](docs/LINUX.md)：Ubuntu 依赖、源码运行、打包和目标机检查。
 - [裁判系统与超电测试指南](docs/FIELD_TEST.md)：接线前检查、只读测试顺序、记录哪些数据、怎样判定问题所在。
 - [测试记录模板](docs/TEST_RECORD.md)：每次实测复制一份填写。
 
