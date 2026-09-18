@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=bnguclient
+Comment=RoboMaster client and AI detection dashboard
+Exec=bnguclient
+Icon=com.jnushark.SharkClient
+Terminal=false
+Categories=Utility;Robotics;

@@ -1,0 +1,45 @@
+{
+  "checkedAt": "2026-09-18T08:51:01.525Z",
+  "url": "http://tauri.localhost/",
+  "errors": [],
+  "consoleErrors": [],
+  "escReleasesControl": true,
+  "videoContinuesBehindMenu": true,
+  "stats": {
+    "mqtt": {
+      "bytesReceived": 6968,
+      "bytesSent": 28,
+      "messagesReceived": 291,
+      "messagesSent": 2,
+      "reconnectAttempts": 0
+    },
+    "udp": {
+      "mjpegStreamUrl": "http://127.0.0.1:50777/udp.mjpg",
+      "running": true,
+      "stats": {
+        "assembledFrames": 178,
+        "assemblyLatencyAvgMs": 0.1356011235955056,
+        "assemblyLatencyMaxMs": 1.3,
+        "decodeQueueDepth": 0,
+        "decodeQueueWaitAvgMs": 14.36281679389313,
+        "decodeQueueWaitMaxMs": 84.892,
+        "decodedFrames": 95,
+        "decodedHeight": 720,
+        "decodedWidth": 1280,
+        "decoderBackend": "gpu-ffmpeg",
+        "decoderCallAvgMs": 0.7745725190839695,
+        "decoderCallMaxMs": 97.318,
+        "decoderWaitingKeyframe": false,
+        "droppedFrames": 47,
+        "droppedIncompleteFrames": 0,
+        "droppedOldFrames": 27,
+        "errors": 0,
+        "lastFrameTime": 1789721461384,
+        "outputHeight": 720,
+        "outputWidth": 1280,
+        "receivedFrames": 74,
+        "totalBytes": 3367645
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "rm2026-mock-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "npm run ensure-video",
+    "dev": "tsx src/index.ts",
+    "ensure-video": "tsx scripts/generate-test-video.ts --if-missing",
+    "generate-video": "tsx scripts/generate-test-video.ts",
+    "test": "tsx --test test/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "aedes": "^0.51.3",
+    "mqtt": "^5.15.1",
+    "protobufjs": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.20.0",
+    "typescript": "~5.6.3"
+  }
+}

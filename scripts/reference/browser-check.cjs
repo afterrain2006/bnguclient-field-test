@@ -1,0 +1,96 @@
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { createRequire } = require('node:module');
+const runtime = process.env.SHARK_PLAYWRIGHT_PATH;
+const { chromium } = runtime ? require(runtime) : require('playwright');
+(async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? {channel: 'msedge'} : {}) });
+  const healthPage = await browser.newPage();
+  await healthPage.goto('http://127.0.0.1:1430/');
+  await healthPage.getByText('等待血量数据', { exact: true }).waitFor();
+  await healthPage.evaluate(async () => {
+    const { useMqttDataStore } = await import('/src/store/modules/mqtt_data.ts');
+    const store = useMqttDataStore();
+    store.handleMessage('RobotStaticStatus', 'robot_static_status', { robotId: 3, maxHealth: 400 });
+    store.handleMessage('RobotDynamicStatus', 'robot_dynamic_status', { currentHealth: 0 });
+  });
+  assert.match(await healthPage.locator('.health-value').innerText(), /^0\s*\/\s*400/);
+  assert.equal(await healthPage.locator('.health-freshness').count(), 0);
+  await healthPage.getByText('血量数据已过期', { exact: true }).waitFor({ timeout: 6000 });
+  await healthPage.evaluate(async () => {
+    const { useMqttDataStore } = await import('/src/store/modules/mqtt_data.ts');
+    useMqttDataStore().handleMessage('RobotDynamicStatus', 'robot_dynamic_status', { currentHealth: 200 });
+  });
+  await healthPage.getByText('血量数据已过期', { exact: true }).waitFor({ state: 'hidden' });
+  assert.match(await healthPage.locator('.health-value').innerText(), /^200\s*\/\s*400/);
+  await healthPage.close();
+  const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto(process.env.SHARK_PREVIEW_URL || 'http://127.0.0.1:1430/?demo=1');
+  await page.getByText('本地演示 · 非实机数据', { exact: true }).waitFor({ timeout: 30000 });
+  assert(await page.getByText(/BNGUCLIENT/).first().isVisible());
+  await page.waitForTimeout(2500);
+  const state = await page.evaluate(async () => {
+    const {useReferenceSession} = await import('/src/reference/session.ts');
+    const {useMqttDataStore} = await import('/src/store/modules/mqtt_data.ts');
+    const s = useReferenceSession(); const m = useMqttDataStore();
+    return { received:s.received, ready:s.commandReady, hp:s.robot?.currentHealth, fields:m.customData.get(3)?.pureDataFields, zero:s.robot?.yaw === undefined };
+  });
+  assert(state.received > 20); assert.equal(state.ready, false); assert(state.hp > 0); assert.equal(typeof state.fields.infantry, 'number'); assert.equal(state.zero, false);
+  assert(await page.getByRole('button', {name:'启用控制',exact:true}).isDisabled());
+  fs.mkdirSync('artifacts', { recursive: true });
+  assert.equal(await page.getByRole('navigation', {name:'主导航'}).isVisible(), false);
+  const videoNode = await page.locator('.video-stage').elementHandle();
+  await page.screenshot({ path: 'artifacts/fps-cockpit.png', fullPage: true });
+  await page.getByRole('button', {name:'打开菜单',exact:true}).focus();
+  await page.keyboard.press('Escape');
+  assert(await page.getByRole('dialog', {name:'操作菜单'}).isVisible());
+  assert(await page.locator('.cockpit-layout').evaluate(el => el.inert));
+  await page.keyboard.down('Escape'); await page.keyboard.down('Escape'); await page.keyboard.up('Escape');
+  assert.equal(await page.getByRole('dialog', {name:'操作菜单'}).isVisible(), false);
+  assert.equal(await page.getByRole('button', {name:'打开菜单',exact:true}).evaluate(el => el === document.activeElement), true);
+  await page.keyboard.press('Escape');
+  await page.screenshot({ path: 'artifacts/fps-menu.png', fullPage: true });
+  const beforeMenuRx = state.received;
+  await page.waitForTimeout(1000);
+  assert(await page.evaluate(async () => (await import('/src/reference/session.ts')).useReferenceSession().received) > beforeMenuRx);
+  assert(await videoNode.evaluate(el => el.isConnected));
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', {name:'导出会话记录',exact:true}).click();
+  const download = await downloadPromise; await download.saveAs('artifacts/exported-demo.json');
+  assert.equal(JSON.parse(fs.readFileSync('artifacts/exported-demo.json','utf8')).format, 'shark-session-v1');
+  fs.mkdirSync('artifacts', { recursive: true });
+  await page.keyboard.press('Escape');
+  await page.screenshot({ path: 'artifacts/cockpit-desktop.png', fullPage: true });
+  await page.keyboard.press('Escape');
+  const counts = {};
+  for (const name of ['遥测', '协议', '接口', '设置']) {
+    await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name, exact: true }).click();
+    await page.waitForTimeout(250);
+    counts[name] = await page.locator('.fps-menu main').innerText();
+    if (name === '接口') {
+      const bytes = new Uint8Array(150); new DataView(bytes.buffer).setFloat32(1, 12.5, true); bytes[5] = 253;
+      await page.getByLabel('CustomByteBlock.data 十六进制').fill(Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(' '));
+      await page.getByRole('button',{name:'按当前布局解析',exact:true}).click();
+      assert.match(await page.locator('.byte-result').innerText(), /12\.5/);
+      assert.match(await page.locator('.byte-result').innerText(), /-3/);
+    }
+    await page.screenshot({ path: `artifacts/page-${name}.png`, fullPage: true });
+  }
+  await page.getByRole('button', { name: '断开连接', exact: true }).click();
+  await page.getByText('OFFLINE · 未连接', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '启动本地演示', exact: true }).click();
+  await page.getByText('本地演示 · 非实机数据', { exact: true }).waitFor();
+  await page.getByRole('navigation').getByRole('button', { name: '指挥台', exact: true }).click();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(async () => (await import('/src/reference/session.ts')).useReferenceSession().captured), false);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.screenshot({ path: 'artifacts/cockpit-1024.png', fullPage: true });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+  const result = { errors, overflow, state, exportVerified:true, byteInspectorVerified:true, escMenuVerified:true, liveViewPreserved:true, pages: Object.fromEntries(Object.entries(counts).map(([key, value]) => [key, value.length])), checkedAt: new Date().toISOString() };
+  fs.writeFileSync('artifacts/browser-check.json', JSON.stringify(result, null, 2));
+  await browser.close();
+  console.log(JSON.stringify(result, null, 2));
+  if (errors.length || overflow) process.exitCode = 1;
+})().catch(error => { console.error(error); process.exitCode = 1; });

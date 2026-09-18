@@ -1,0 +1,56 @@
+{
+  "checkedAt": "2026-09-12T08:40:13.794Z",
+  "data": {
+    "mode": "live",
+    "connection": "connected",
+    "robotId": 3,
+    "hp": 380,
+    "received": 230,
+    "rejected": 0,
+    "sent": true,
+    "oversized": {
+      "success": false,
+      "error": "CustomControl must encode bytes field 1 with at most 30 bytes"
+    },
+    "unknown": {
+      "success": false,
+      "error": "Unsupported referee command topic: RobotDynamicStatus"
+    },
+    "stats": {
+      "assembledFrames": 140,
+      "assemblyLatencyAvgMs": 0.19842142857142858,
+      "assemblyLatencyMaxMs": 0.702,
+      "decodeQueueDepth": 0,
+      "decodeQueueWaitAvgMs": 0.8366587301587302,
+      "decodeQueueWaitMaxMs": 59.061,
+      "decodedFrames": 93,
+      "decodedHeight": 720,
+      "decodedWidth": 1280,
+      "decoderBackend": "gpu-ffmpeg",
+      "decoderCallAvgMs": 0.7316349206349206,
+      "decoderCallMaxMs": 88.841,
+      "decoderWaitingKeyframe": false,
+      "droppedFrames": 14,
+      "droppedIncompleteFrames": 0,
+      "droppedOldFrames": 43,
+      "errors": 0,
+      "lastFrameTime": 1789202413418,
+      "outputHeight": 720,
+      "outputWidth": 1280,
+      "receivedFrames": 50,
+      "totalBytes": 2643324
+    },
+    "tauriStats": {
+      "bytesReceived": 10687,
+      "bytesSent": 22,
+      "messagesReceived": 523,
+      "messagesSent": 3,
+      "reconnectAttempts": 0
+    }
+  },
+  "disconnected": {
+    "stale": true,
+    "ready": false
+  },
+  "errors": []
+}
