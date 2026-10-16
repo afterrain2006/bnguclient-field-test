@@ -310,7 +310,7 @@ pub async fn mqtt_connect(
                         match notification {
                             Ok(Event::Incoming(Incoming::ConnAck(connack))) => {
                                 // rumqttc validates the CONNACK return code before emitting this event.
-                                info!(target: "mqtt_diag", ?connack.code, "MQTT CONNACK accepted");
+                                info!(target: "mqtt_diag", code = ?connack.code, "MQTT CONNACK accepted");
                                 has_connected_once = true;
                                 reconnect_attempt = 0;
                                 reconnect_delay_ms = reconnect_initial_ms;
