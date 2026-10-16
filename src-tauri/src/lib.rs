@@ -262,6 +262,7 @@ pub fn run() {
             udp_bridge::udp_stream_get_status,
             udp_bridge::udp_stream_get_latest_mjpeg_frame,
             mqtt_client::mqtt_connect,
+            mqtt_client::mqtt_tcp_probe,
             mqtt_client::mqtt_disconnect,
             mqtt_client::mqtt_publish,
             mqtt_client::mqtt_publish_raw,
