@@ -770,6 +770,7 @@ const api: any = {
   
   mqtt: {
     connect: async (config: any) => await invoke('mqtt_connect', { config }),
+    probeTcp: async (host: string, port: number) => await invoke('mqtt_tcp_probe', { host, port }),
     disconnect: async () => await invoke('mqtt_disconnect'),
     publish: async (data: any) => {
       try {

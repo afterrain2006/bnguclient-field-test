@@ -8,7 +8,7 @@
     "dev": "tsx src/index.ts",
     "ensure-video": "tsx scripts/generate-test-video.ts --if-missing",
     "generate-video": "tsx scripts/generate-test-video.ts",
-    "test": "tsx --test test/**/*.test.ts",
+    "test": "tsx --test test/**/*.test.ts && node --test test/fault-mqtt-server.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
