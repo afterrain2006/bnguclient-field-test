@@ -182,6 +182,50 @@ fn build_mqtt_options(config: &MqttConfig, client_id: &str) -> MqttOptions {
 
 // ==================== Commands ====================
 
+/// A separate, read-only TCP check. Success does NOT imply MQTT CONNACK.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TcpProbeResult {
+    pub reachable: bool,
+    pub elapsed_ms: u64,
+    pub detail: String,
+}
+
+#[tauri::command]
+pub async fn mqtt_tcp_probe(host: String, port: u16) -> Result<TcpProbeResult, String> {
+    let host = host.trim();
+    if host.is_empty() || port == 0 {
+        return Err("A non-empty MQTT host and a nonzero port are required".to_string());
+    }
+    let started = Instant::now();
+    let probe = tokio::time::timeout(
+        Duration::from_secs(3),
+        tokio::net::TcpStream::connect((host, port)),
+    )
+    .await;
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    Ok(match probe {
+        Ok(Ok(stream)) => {
+            drop(stream);
+            TcpProbeResult {
+                reachable: true,
+                elapsed_ms,
+                detail: "TCP accepted; MQTT CONNECT/CONNACK not tested".into(),
+            }
+        }
+        Ok(Err(error)) => TcpProbeResult {
+            reachable: false,
+            elapsed_ms,
+            detail: format!("TCP connection failed: {error}"),
+        },
+        Err(_) => TcpProbeResult {
+            reachable: false,
+            elapsed_ms,
+            detail: "TCP connection timed out after 3 seconds".into(),
+        },
+    })
+}
+
 #[tauri::command]
 pub async fn mqtt_connect(
     app: AppHandle,
@@ -219,6 +263,8 @@ pub async fn mqtt_connect(
     let reconnect_initial_ms = config.reconnect_initial_ms.unwrap_or(1000).max(100);
     const RECONNECT_MAX_MS: u64 = 30_000;
 
+    info!(target: "mqtt_diag", host = %config.host, port = config.port, client_id = %client_id,
+        "starting MQTT 3.1.1 handshake");
     let mqttoptions = build_mqtt_options(&config, &client_id);
     let (client, mut eventloop) = AsyncClient::new(mqttoptions, 50);
     let (initial_connect_tx, initial_connect_rx) = oneshot::channel::<Result<(), String>>();
@@ -262,7 +308,9 @@ pub async fn mqtt_connect(
                     }
                     notification = eventloop.poll() => {
                         match notification {
-                            Ok(Event::Incoming(Incoming::ConnAck(_))) => {
+                            Ok(Event::Incoming(Incoming::ConnAck(connack))) => {
+                                // rumqttc validates the CONNACK return code before emitting this event.
+                                info!(target: "mqtt_diag", ?connack.code, "MQTT CONNACK accepted");
                                 has_connected_once = true;
                                 reconnect_attempt = 0;
                                 reconnect_delay_ms = reconnect_initial_ms;
@@ -317,7 +365,15 @@ pub async fn mqtt_connect(
                                 if !has_connected_once {
                                     set_status(&app_handle, &status_state, &connected_state, "error", reconnect_attempt);
                                     if let Some(tx) = initial_connect_tx.take() {
-                                        let _ = tx.send(Err(format!("MQTT connection failed: {error}")));
+                                        let reason = match &error {
+                                            rumqttc::ConnectionError::ConnectionRefused(code) =>
+                                                format!("MQTT broker refused CONNECT: {code:?}"),
+                                            rumqttc::ConnectionError::NetworkTimeout =>
+                                                "MQTT TCP/connect/CONNACK handshake timed out inside rumqttc (5s)".to_string(),
+                                            _ => format!("MQTT initial connection failed: {error}"),
+                                        };
+                                        warn!(target: "mqtt_diag", reason = %reason, "initial MQTT handshake failed");
+                                        let _ = tx.send(Err(reason));
                                     }
                                     break 'outer;
                                 }
@@ -370,8 +426,13 @@ pub async fn mqtt_connect(
         *state.listen_task.lock().unwrap() = Some(handle);
     }
 
+    // rumqttc itself allows 5s for TCP + MQTT CONNACK. The outer deadline must
+    // be longer, or it hides rumqttc's useful ConnectionRefused/NetworkTimeout error.
+    let initial_started = Instant::now();
     let initial_connect_result =
-        tokio::time::timeout(tokio::time::Duration::from_secs(5), initial_connect_rx).await;
+        tokio::time::timeout(Duration::from_secs(7), initial_connect_rx).await;
+    info!(target: "mqtt_diag", elapsed_ms = initial_started.elapsed().as_millis() as u64,
+        "initial MQTT handshake completed or stopped");
 
     match initial_connect_result {
         Ok(Ok(Ok(()))) => Ok(true),
@@ -391,7 +452,7 @@ pub async fn mqtt_connect(
         Err(_) => {
             stop_existing_connection(&state).await;
             set_status(&app, &state.status, &state.is_connected, "error", 0);
-            Err("MQTT connection timed out while waiting for broker acknowledgement.".to_string())
+            Err("MQTT initial connection exceeded 7s; no CONNACK or detailed transport error was received.".to_string())
         }
     }
 }
