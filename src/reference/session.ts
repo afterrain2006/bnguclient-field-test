@@ -121,13 +121,36 @@ export const useReferenceSession = defineStore('referenceSession', () => {
         connection.value = status.status; store.setConnectionStatus(status.connected)
         if (!status.connected) captured.value = false
       }))
-      await window.api.mqtt.connect({ host: profile.value.host, port: profile.value.port, clientId: String(profile.value.robotId), topics: downlinkTopics, subscribeQos: 1, autoReconnect: true, cleanSession: true, keepAliveSecs: 10 })
+      // The Rust command intentionally returns after the first unsuccessful handshake.
+      // Retry only transient initial failures, not broker refusal / invalid credentials.
+      const config = { host: profile.value.host, port: profile.value.port, clientId: String(profile.value.robotId), topics: downlinkTopics, subscribeQos: 1, autoReconnect: true, cleanSession: true, keepAliveSecs: 10 }
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        if (generation !== epoch) return
+        try {
+          await window.api.mqtt.connect(config)
+          break
+        } catch (cause) {
+          if (generation !== epoch) return
+          const reason = String(cause)
+          const permanent = /broker refused CONNECT|ConnectionRefused|NotAuthorized|BadClientId|authentication/i.test(reason)
+          if (permanent || attempt === 3) throw new Error(`MQTT attempt ${attempt}/3 failed: ${reason}`)
+          log(`MQTT attempt ${attempt}/3 failed: ${reason}; retrying`, 'warning')
+          connection.value = 'connecting'
+          await new Promise(resolve => setTimeout(resolve, attempt * 750))
+        }
+      }
       if (generation !== epoch) { await window.api.mqtt.disconnect(); return }
       const status = await window.api.mqtt.getStatus()
       if (generation !== epoch) return
+      if (!status.connected) throw new Error(`MQTT handshake returned but status is ${status.status}`)
       connection.value = status.status; store.setConnectionStatus(status.connected)
       writeLocal('connection', profile.value); log(`MQTT 已连接 ${profile.value.host}:${profile.value.port} · clientID ${profile.value.robotId}`)
-    } catch (cause) { error.value = String(cause); log(error.value, 'error'); connection.value = 'error' }
+    } catch (cause) {
+      const reason = String(cause)
+      // A failed initial connection must not leave the UI locked in live mode.
+      if (mode.value === 'live') await disconnect()
+      error.value = reason; log(reason, 'error'); connection.value = 'error'
+    }
     finally { busy.value = false }
   }
   async function startDemo(): Promise<void> {
