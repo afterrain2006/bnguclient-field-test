@@ -79,3 +79,8 @@ resources/ffmpeg-linux/
 
 # Vendored FFmpeg static libs (re-built via scripts/build-ffmpeg-minimal*)
 src-tauri/vendor/ffmpeg-static/
+
+# Local MQTT investigation data; not part of the public source release
+/artifacts/mqtt-handshake-fix-2026-10-17/
+/artifacts/mqtt-timeout-repro-2026-10-17/
+/docs/artifacts/

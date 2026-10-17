@@ -16,6 +16,10 @@ export interface MockConfig {
   jitterMs: number
   reorder: number
   scenario: 'infantry-demo'
+  mqttProfile: 'open' | 'official-observed'
+  robotId: number
+  officialLoggedIn: boolean
+  connackDelayMs: number
 }
 
 function valueAfter(args: string[], option: string): string | undefined {
@@ -40,6 +44,15 @@ function probabilityOption(args: string[], option: string): number {
 }
 
 export function parseConfig(args = process.argv.slice(2)): MockConfig {
+  const mqttProfile = valueAfter(args, '--mqtt-profile') ?? 'open'
+  if (mqttProfile !== 'open' && mqttProfile !== 'official-observed') throw new Error('Unknown --mqtt-profile')
+  const login = valueAfter(args, '--official-login-state') ?? 'logged-in'
+  if (login !== 'logged-in' && login !== 'logged-out') throw new Error('Unknown --official-login-state')
+  const robotId = numberOption(args, '--robot-id', 3)
+  if (!Number.isInteger(robotId) || robotId < 1 || robotId > 255) throw new Error('--robot-id must be an integer from 1 to 255')
+  const connackDelayMs = numberOption(args, '--connack-delay', 0)
+  if (!Number.isInteger(connackDelayMs) || connackDelayMs < 0 || connackDelayMs > 30_000) throw new Error('--connack-delay must be from 0 to 30000 ms')
+  if (mqttProfile === 'open' && connackDelayMs !== 0) throw new Error('--connack-delay requires --mqtt-profile official-observed')
   const fragmentPayloadSize = Math.trunc(numberOption(args, '--fragment-size', 1200))
   if (fragmentPayloadSize < 256 || fragmentPayloadSize > 1400) {
     throw new Error('--fragment-size must be between 256 and 1400 bytes')
@@ -59,6 +72,10 @@ export function parseConfig(args = process.argv.slice(2)): MockConfig {
     packetLoss: probabilityOption(args, '--packet-loss'),
     jitterMs,
     reorder: probabilityOption(args, '--reorder'),
-    scenario: 'infantry-demo'
+    scenario: 'infantry-demo',
+    mqttProfile,
+    robotId,
+    officialLoggedIn: login === 'logged-in',
+    connackDelayMs
   }
 }

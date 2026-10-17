@@ -8,12 +8,14 @@ export class ProtoPublisher {
 
   constructor(
     private readonly broker: Aedes,
-    private readonly codec: ProtocolCodec
+    private readonly codec: ProtocolCodec,
+    private readonly bridgePublish?: (topic: string, payload: Buffer) => Promise<void>
   ) {}
 
   async publish(topic: string, value: Record<string, unknown>): Promise<number> {
     const payload = this.codec.encode(topic, value)
-    await new Promise<void>((resolve, reject) => {
+    if (this.bridgePublish) await this.bridgePublish(topic, payload)
+    else await new Promise<void>((resolve, reject) => {
       this.broker.publish(
         {
           cmd: 'publish',

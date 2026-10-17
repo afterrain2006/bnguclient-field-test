@@ -14,9 +14,12 @@ if (!fs.existsSync(config.videoPath)) {
 }
 
 const codec = await ProtocolCodec.load()
-const mqtt = await startMqttBroker(codec, config.mqttHost, config.mqttPort)
-const publisher = new ProtoPublisher(mqtt.broker, codec)
-const scenario = startInfantryDemo(publisher)
+const mqtt = await startMqttBroker(codec, config.mqttHost, config.mqttPort,
+  config.mqttProfile === 'official-observed' ? {
+    robotId: config.robotId, loggedIn: config.officialLoggedIn, connackDelayMs: config.connackDelayMs
+  } : undefined)
+const publisher = new ProtoPublisher(mqtt.broker, codec, mqtt.official?.publish)
+const scenario = startInfantryDemo(publisher, config.robotId)
 const accessUnits = loadH265AccessUnits(config.videoPath)
 const keyframes = accessUnits.filter((unit) => unit.keyframe).length
 const video = new H265UdpSender(accessUnits, {
@@ -38,6 +41,7 @@ console.log(`Video:\n1280x720 @${config.videoFps}fps HEVC`)
 console.log(`Access units: ${accessUnits.length} (${keyframes} keyframes)`)
 console.log(`Fragment payload: ${config.fragmentPayloadSize} bytes`)
 console.log(`Protocol: ${PROTO_PATH}`)
+console.log(`MQTT profile: ${config.mqttProfile}; robot ID: ${config.robotId}; login fixture: ${config.officialLoggedIn}; CONNACK fault delay: ${config.connackDelayMs} ms`)
 console.log(`Network simulation: loss=${config.packetLoss}, jitter=${config.jitterMs}ms, reorder=${config.reorder}\n`)
 
 const metricsDir = path.join(MOCK_ROOT, 'metrics')
@@ -64,7 +68,9 @@ const metricsTimer = setInterval(() => {
     uptimeSec: (Date.now() - startedAt) / 1000,
     mqtt: {
       published: publisher.counts,
-      receivedCommands: mqtt.receivedCommands
+      receivedCommands: mqtt.receivedCommands,
+      connectionEvents: mqtt.official?.events ?? [],
+      connectionCounts: mqtt.official?.counts ?? {}
     },
     video: {
       ...video.stats,

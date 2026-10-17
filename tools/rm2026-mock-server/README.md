@@ -10,6 +10,7 @@
 - FFmpeg `testsrc2` 生成的无版权 1280×720、30 FPS 动态 HEVC 测试图；下文示例 UDP 端口为 `3335`
 - Annex-B access unit 解析和 8 字节 RM2026 UDP 分片头
 - 可选丢包、抖动和乱序模拟
+- 可选 `official-observed` MQTT 模式：复现官方选手端已观察到的登录门槛、机器人 Client ID、重复连接拒绝和内部消息桥
 - `metrics/runtime.json` 运行指标
 
 Mock 直接加载仓库的 `UDP-MQTT Server/proto/messages.proto`，不会维护第二套手写协议。
@@ -36,6 +37,28 @@ npm run generate-video
 4. Mock 发布 `RobotStaticStatus` 后，客户端当前机器人会切换到红方 3 号步兵。
 
 现场地址以队伍网络配置为准，本地 Mock 不会修改保存的真实测试记录。
+
+## 官方 MQTT 行为复现
+
+详细机制、二进制证据和复现范围见 [MQTT 修复与测试说明](../../docs/MQTT_HANDSHAKE_FIX.md)。默认仍为原来的 `open` 模式。以下命令在 Windows PowerShell 和 Linux shell 中均可使用：
+
+```sh
+npm run dev -- --mqtt-profile official-observed --robot-id 3 --mqtt-port 1884 --udp-port 3335
+```
+
+客户端用 `127.0.0.1:1884`，Client ID 为字符串 `3`。`--official-login-state logged-out` 模拟官方选手端尚未登录；这是测试状态，不会连接真正的官方账号系统。
+
+```sh
+npm run dev -- --mqtt-profile official-observed --robot-id 3 --official-login-state logged-out --mqtt-port 1884 --udp-port 3335
+```
+
+为了对照历史握手中断问题与当前修复，可显式给外部客户端的 CONNACK 注入 100 ms 延迟：
+
+```sh
+npm run dev -- --mqtt-profile official-observed --robot-id 3 --connack-delay 100 --mqtt-port 1884 --udp-port 3335
+```
+
+延迟默认是 **0**；100 ms 是实验条件，尚未证实官方服务器存在固定延迟。历史发布版驱动保留原问题；当前客户端源码已经修复批处理 tick 取消握手的问题，见 [修复与测试说明](../../docs/MQTT_HANDSHAKE_FIX.md)。日志和 `metrics/runtime.json` 会记录校验结果以及应答前断线次数，不记录密码。
 
 ## 当前模拟消息
 
@@ -77,11 +100,11 @@ npm test
 npm run typecheck
 ```
 
-覆盖仓库 Proto 编解码、Broker publish/subscribe、UDP 大端分片重组和 H.265 access unit 解析。
+覆盖仓库 Proto 编解码、Broker publish/subscribe、官方模式的连接校验/会话/注销/内部控制桥、UDP 大端分片重组和 H.265 access unit 解析。
 
 ## 已知限制
 
 - 仅实现第一批 6 种下行消息，不模拟全部 RM2026 协议。
 - 视频是循环的 10 秒测试码流。
 - 网络异常模拟是轻量实现，不是精确的网络仿真器。
-- Mock 只绑定 loopback，不提供认证，不应暴露到比赛或公共网络。
+- Mock 默认绑定 loopback；`--mqtt-host` 可覆盖。两种模式都没有真实账号认证，测试时保持本机使用。

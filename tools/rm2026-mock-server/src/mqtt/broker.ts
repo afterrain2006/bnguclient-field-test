@@ -3,9 +3,10 @@ import { createRequire } from 'node:module'
 import type Aedes from 'aedes'
 import type { AedesPublishPacket, Client } from 'aedes'
 import type { ProtocolCodec } from '../protocol.js'
+import { installOfficialProfile, type OfficialProfile, type OfficialProfileOptions } from './official-profile.js'
 
 const require = createRequire(import.meta.url)
-const createAedes = require('aedes') as () => Aedes
+const createAedes = require('aedes') as (options?: { connectTimeout?: number }) => Aedes
 
 export interface ReceivedCommand {
   timestamp: string
@@ -22,6 +23,7 @@ export interface MqttBrokerHandle {
   host: string
   port: number
   receivedCommands: ReceivedCommand[]
+  official?: OfficialProfile
   close(): Promise<void>
 }
 
@@ -42,9 +44,11 @@ const CONTROL_TOPICS = new Set([
 export async function startMqttBroker(
   codec: ProtocolCodec,
   host: string,
-  port: number
+  port: number,
+  officialOptions?: OfficialProfileOptions
 ): Promise<MqttBrokerHandle> {
-  const broker = createAedes()
+  const broker = createAedes(officialOptions ? { connectTimeout: 2000 } : undefined)
+  const official = officialOptions ? installOfficialProfile(broker, officialOptions) : undefined
   const server = net.createServer(broker.handle)
   const receivedCommands: ReceivedCommand[] = []
 
@@ -59,6 +63,7 @@ export async function startMqttBroker(
   })
   broker.on('publish', (packet: AedesPublishPacket, client: Client | null) => {
     if (!client || packet.topic.startsWith('$SYS')) return
+    if (official && client.id === 'official_cc_mock') return
     const topic = packet.topic
     const payload = Buffer.isBuffer(packet.payload) ? packet.payload : Buffer.from(packet.payload)
     const record: ReceivedCommand = {
@@ -91,16 +96,34 @@ export async function startMqttBroker(
     else console.log(`decode error: ${record.decodeError}`)
   })
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(port, host, () => {
-      server.off('error', reject)
-      resolve()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(port, host, () => {
+        server.off('error', reject)
+        resolve()
+      })
     })
-  })
+  } catch (error) {
+    await official?.stop()
+    await new Promise<void>((resolve) => broker.close(() => resolve()))
+    throw error
+  }
 
   const actualPort = (server.address() as AddressInfo).port
   console.log(`[MQTT] Broker listening on ${host}:${actualPort}`)
+
+  if (official) {
+    try {
+      const bridgeHost = host === '0.0.0.0' ? '127.0.0.1' : host === '::' ? '[::1]' : host.includes(':') ? `[${host}]` : host
+      await official.startBridge(`mqtt://${bridgeHost}:${actualPort}`)
+    } catch (error) {
+      await official.stop()
+      await new Promise<void>((resolve) => broker.close(() => resolve()))
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+      throw error
+    }
+  }
 
   return {
     broker,
@@ -108,9 +131,11 @@ export async function startMqttBroker(
     host,
     port: actualPort,
     receivedCommands,
+    official,
     close: async () => {
-      await new Promise<void>((resolve) => server.close(() => resolve()))
+      await official?.stop()
       await new Promise<void>((resolve) => broker.close(() => resolve()))
+      await new Promise<void>((resolve) => server.close(() => resolve()))
     }
   }
 }

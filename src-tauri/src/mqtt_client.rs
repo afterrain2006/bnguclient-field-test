@@ -1,4 +1,7 @@
 pub mod local_broker;
+mod poll;
+
+use poll::poll_with_batch;
 
 use rumqttc::{AsyncClient, Event, Incoming, LastWill, MqttOptions, QoS};
 use serde::{Deserialize, Serialize};
@@ -14,6 +17,7 @@ use tracing::{info, warn};
 
 const MQTT_MESSAGE_BATCH_MAX_LEN: usize = 64;
 const MQTT_MESSAGE_BATCH_INTERVAL_MS: u64 = 16;
+const MQTT_INITIAL_CONNECT_TIMEOUT_SECS: u64 = 10;
 
 // ==================== Payload Types ====================
 
@@ -214,6 +218,14 @@ pub async fn mqtt_connect(
         )
     });
 
+    info!(
+        host = %config.host,
+        port = config.port,
+        client_id = %client_id,
+        protocol = "MQTT 3.1.1",
+        "starting MQTT connection"
+    );
+
     let subscribe_qos = qos_from_u8(config.subscribe_qos.unwrap_or(1));
     let auto_reconnect = config.auto_reconnect.unwrap_or(true);
     let reconnect_initial_ms = config.reconnect_initial_ms.unwrap_or(1000).max(100);
@@ -257,10 +269,11 @@ pub async fn mqtt_connect(
                         emit_mqtt_message_batch(&app_handle, &mut pending_messages);
                         break 'outer;
                     }
-                    _ = message_batch_interval.tick() => {
-                        emit_mqtt_message_batch(&app_handle, &mut pending_messages);
-                    }
-                    notification = eventloop.poll() => {
+                    notification = poll_with_batch(
+                        eventloop.poll(),
+                        &mut message_batch_interval,
+                        || emit_mqtt_message_batch(&app_handle, &mut pending_messages),
+                    ) => {
                         match notification {
                             Ok(Event::Incoming(Incoming::ConnAck(_))) => {
                                 has_connected_once = true;
@@ -370,8 +383,11 @@ pub async fn mqtt_connect(
         *state.listen_task.lock().unwrap() = Some(handle);
     }
 
-    let initial_connect_result =
-        tokio::time::timeout(tokio::time::Duration::from_secs(5), initial_connect_rx).await;
+    let initial_connect_result = tokio::time::timeout(
+        tokio::time::Duration::from_secs(MQTT_INITIAL_CONNECT_TIMEOUT_SECS),
+        initial_connect_rx,
+    )
+    .await;
 
     match initial_connect_result {
         Ok(Ok(Ok(()))) => Ok(true),
@@ -391,7 +407,10 @@ pub async fn mqtt_connect(
         Err(_) => {
             stop_existing_connection(&state).await;
             set_status(&app, &state.status, &state.is_connected, "error", 0);
-            Err("MQTT connection timed out while waiting for broker acknowledgement.".to_string())
+            Err(format!(
+                "No MQTT CONNACK received from {}:{} within {} seconds (MQTT 3.1.1, Client ID '{}'). A successful port scan only proves that TCP is reachable. Verify that the referee engine is ready, this Client ID matches the assigned robot, and no other client is using the same ID.",
+                config.host, config.port, MQTT_INITIAL_CONNECT_TIMEOUT_SECS, client_id
+            ))
         }
     }
 }

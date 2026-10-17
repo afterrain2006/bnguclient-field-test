@@ -9,7 +9,7 @@ export interface ScenarioHandle {
 
 type Builder = (elapsedSec: number, sequence: number) => Record<string, unknown>
 
-export function startInfantryDemo(publisher: ProtoPublisher): ScenarioHandle {
+export function startInfantryDemo(publisher: ProtoPublisher, robotId = INFANTRY_ROBOT_ID): ScenarioHandle {
   const startedAt = performance.now()
   const timers: RateHandle[] = []
 
@@ -44,7 +44,7 @@ export function startInfantryDemo(publisher: ProtoPublisher): ScenarioHandle {
     connectionState: 1,
     fieldState: 1,
     aliveState: 1,
-    robotId: INFANTRY_ROBOT_ID,
+    robotId,
     robotType: 3,
     performanceSystemShooter: 1,
     performanceSystemChassis: 1,
@@ -82,13 +82,13 @@ export function startInfantryDemo(publisher: ProtoPublisher): ScenarioHandle {
     y: 3 * Math.cos(t * 0.22),
     z: 0,
     yaw: (t * 24) % 360,
-    robotId: INFANTRY_ROBOT_ID
+    robotId
   }))
 
   schedule('Buff', 5, (t) => {
     const active = Math.floor(t / 5) % 2 === 0
     return {
-      robotId: INFANTRY_ROBOT_ID,
+      robotId,
       buffType: active ? 1 : 3,
       buffLevel: active ? 2 : 1,
       buffMaxTime: 10,
@@ -98,7 +98,7 @@ export function startInfantryDemo(publisher: ProtoPublisher): ScenarioHandle {
 
   schedule('Event', 2, (_t, sequence) => ({
     eventId: sequence % 2 === 0 ? 1 : 16,
-    param: JSON.stringify({ source: 'rm2026-mock', sequence, robotId: INFANTRY_ROBOT_ID })
+    param: JSON.stringify({ source: 'rm2026-mock', sequence, robotId })
   }))
 
   return {
